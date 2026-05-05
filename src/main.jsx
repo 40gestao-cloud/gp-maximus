@@ -7,3 +7,6 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     <App />
   </React.StrictMode>
 );
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+});
