@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { db } from "./firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc } from "firebase/firestore";
 
 /* ═══════════════════════════════════════════════════════════════
    STORAGE HELPERS — Firebase Firestore
@@ -11,15 +11,23 @@ const KEYS = {
   DAILY_CODE:"gpmax:dailycode",
 };
 
-async function load(key) {
+/* ═══════════════════════════════════════════════════════════════
+   SESSION HELPERS — persiste sessão no sessionStorage
+   (evita deslogar ao fazer pull-to-refresh no PWA)
+═══════════════════════════════════════════════════════════════ */
+const SESSION_KEY = "gpmax:session";
+
+function saveSession(s) {
+  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch {}
+}
+function restoreSession() {
   try {
-    const ref  = doc(db, "gpmax", key);
-    const snap = await getDoc(ref);
-    return snap.exists() ? snap.data().value : null;
-  } catch (e) {
-    console.error("Firestore load error:", key, e);
-    return null;
-  }
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+function clearSession() {
+  try { sessionStorage.removeItem(SESSION_KEY); } catch {}
 }
 
 async function save(key, value) {
@@ -276,31 +284,42 @@ tr:hover td{background:rgba(255,255,255,.015);}
    ROOT
 ═══════════════════════════════════════════════════════════════ */
 export default function App() {
-  const [session,   setSession]   = useState(null);
+  const [session,   setSession]   = useState(()=>restoreSession()); // ← restaura sessão ao recarregar
   const [employees, setEmployees] = useState([]);
   const [records,   setRecords]   = useState([]);
   const [dailyCode, setDailyCode] = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [loadErr,   setLoadErr]   = useState(false);
 
+  /* ── Tempo real: onSnapshot nos 3 documentos ─────────────────
+     Cada listener fica ativo enquanto o app estiver aberto e
+     atualiza o estado automaticamente quando outro usuário salva. */
   useEffect(()=>{
-    (async()=>{
-      try {
-        const [e,r,dc] = await Promise.all([
-          load(KEYS.EMPLOYEES),
-          load(KEYS.RECORDS),
-          load(KEYS.DAILY_CODE),
-        ]);
-        if(e)  setEmployees(e);
-        if(r)  setRecords(r);
-        if(dc) setDailyCode(dc);
-      } catch(err) {
-        console.error("Erro ao carregar dados:", err);
-        setLoadErr(true);
-      } finally {
-        setLoading(false);
-      }
-    })();
+    let resolved = 0;
+    const total  = 3;
+    let errored  = false;
+
+    const check = () => { if(++resolved === total && !errored) setLoading(false); };
+
+    const unsub = [
+      onSnapshot(
+        doc(db, "gpmax", KEYS.EMPLOYEES),
+        snap => { if(snap.exists()) setEmployees(snap.data().value); check(); },
+        err  => { console.error("onSnapshot employees:", err); errored=true; setLoadErr(true); setLoading(false); }
+      ),
+      onSnapshot(
+        doc(db, "gpmax", KEYS.RECORDS),
+        snap => { if(snap.exists()) setRecords(snap.data().value); check(); },
+        err  => { console.error("onSnapshot records:", err); errored=true; setLoadErr(true); setLoading(false); }
+      ),
+      onSnapshot(
+        doc(db, "gpmax", KEYS.DAILY_CODE),
+        snap => { if(snap.exists()) setDailyCode(snap.data().value); check(); },
+        err  => { console.error("onSnapshot dailycode:", err); errored=true; setLoadErr(true); setLoading(false); }
+      ),
+    ];
+
+    return () => unsub.forEach(u => u()); // cancela listeners ao desmontar
   },[]);
 
   // ⚠️ FIX: useCallback com deps corretas para evitar closures stale
@@ -317,6 +336,16 @@ export default function App() {
   const saveDC = useCallback(async d=>{
     setDailyCode(d);
     await save(KEYS.DAILY_CODE, d);
+  },[]);
+
+  const handleLogin = useCallback(s=>{
+    saveSession(s);
+    setSession(s);
+  },[]);
+
+  const handleLogout = useCallback(()=>{
+    clearSession();
+    setSession(null);
   },[]);
 
   if(loading) return(
@@ -351,12 +380,12 @@ export default function App() {
     <>
       <style>{CSS}</style>
       {!session
-        ? <LoginScreen employees={employees} onLogin={setSession}/>
+        ? <LoginScreen employees={employees} onLogin={handleLogin}/>
         : session.role==="admin"
-          ? <AdminArea session={session} onLogout={()=>setSession(null)}
+          ? <AdminArea session={session} onLogout={handleLogout}
               employees={employees} records={records} dailyCode={dailyCode}
               saveEmp={saveEmp} saveRec={saveRec} saveDC={saveDC}/>
-          : <EmployeeArea session={session} onLogout={()=>setSession(null)}
+          : <EmployeeArea session={session} onLogout={handleLogout}
               records={records} dailyCode={dailyCode} saveRec={saveRec}/>
       }
     </>
