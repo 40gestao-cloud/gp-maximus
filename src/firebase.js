@@ -7,13 +7,13 @@ import { getFirestore } from "firebase/firestore";
 //
 // Se trocar de projeto Firebase, atualize todos os campos abaixo.
 const firebaseConfig = {
-  apiKey:            "AIzaSyAYLJ4-Gt-FZ0zU6Xp9Lx-UhrGGhGNTp8",  // ← corrigido (39 chars)
-  authDomain:        "gp-maximus.firebaseapp.com",
-  projectId:         "gp-maximus",
-  storageBucket:     "gp-maximus.firebasestorage.app",
-  messagingSenderId: "975233569379",
-  appId:             "1:975233569379:web:0356e1af46d1f0aa1f9e56",
+  apiKey: "AIzaSyAZO5SBsdb18eCys7tF6v6ym42KgEmKPiw",
+  authDomain: "rh-maximus-system.firebaseapp.com",
+  projectId: "rh-maximus-system",
+  storageBucket: "rh-maximus-system.firebasestorage.app",
+  messagingSenderId: "636414554510",
+  appId: "1:636414554510:web:ecbe495ed8211d90dbf4df"
 };
 
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
